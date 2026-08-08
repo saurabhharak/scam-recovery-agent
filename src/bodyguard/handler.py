@@ -17,12 +17,14 @@ TRIAGE_INTRO = """🛡️ *Digital Bodyguard activated.*
 
 I'm on it. Stay calm — we're going to handle this together.
 
-To start your recovery, I need a few details:
+To file your complaints, I'll need a few things. First, **your details** for the police/cyber cell report:
 
-1. Which **bank** was the transaction from? (HDFC, SBI, ICICI, etc.)
-2. Do you have the **transaction ID** or UTR number?
-3. What **amount** was taken?
-4. What type of **scam** was it? (UPI fraud, phishing, fake caller, investment scam, etc.)
+1. Your **full name**
+2. Your **bank** the money went from (HDFC, SBI, ICICI, etc.)
+
+Then the **transaction details** — you can send me **screenshots** or paste them:
+3. **Amount(s)** and **UTR / transaction ID(s)** — if money left in *multiple* transactions, send me each one (a screenshot works for each)
+4. The **fraudster's UPI ID or phone number** if you have it (from the payment receipt)
 
 Just reply with whatever you know — I'll ask for what's missing."""
 
@@ -117,13 +119,21 @@ def _handle_media(client, message, engine, alerts, conversation_id, sender):
     recipient = info.get("recipient")
     bank = info.get("bank")
 
-    case_manager.update_case(
-        case.case_id,
-        transaction_id=utr,
-        amount_lost=amount,
-        recipient=recipient,
-        bank_name=bank,
-    )
+    # Record as a transaction in the case (dedupes on UTR, sums total)
+    txn = {
+        "amount": amount,
+        "utr": utr,
+        "recipient": recipient,
+        "bank": bank,
+        "timestamp": info.get("timestamp"),
+    }
+    added = case_manager.add_transaction(case.case_id, txn)
+
+    # Fraudster identifiers from the screenshot (UPI handle/name paid to)
+    if recipient and not case.fraudster_info.get("upi_handle"):
+        case.fraudster_info["upi_handle"] = recipient
+        case.fraudster_info["name"] = recipient  # best available from txn
+        case_manager.update_case(case.case_id, fraudster_info=case.fraudster_info)
 
     if not utr:
         message.reply(

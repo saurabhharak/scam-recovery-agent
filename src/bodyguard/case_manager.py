@@ -70,6 +70,10 @@ class Case:
     bank_fir_number: str | None = None
     follow_up_due: str | None = None
     recipient: str | None = None
+    # Cybercrime requires ALL transactions + victim/fraudster identifiers
+    transactions: list[dict] = field(default_factory=list)
+    victim_info: dict = field(default_factory=dict)
+    fraudster_info: dict = field(default_factory=dict)
     message_count: int = 0
 
 
@@ -131,13 +135,62 @@ class CaseManager:
                 _log_action(case_id, "ACTION_COMPLETED", f"{action_name}: {result}")
                 return
 
+    def add_transaction(self, case_id: str, txn: dict) -> bool:
+        """Add a transaction to the case. Returns True if added, False if duplicate.
+
+        Dedupes on UTR — a user may send the same screenshot twice. Keeps the
+        single `transaction_id`/`amount_lost` fields in sync (first txn) and
+        sums the total amount for the cybercrime complaint.
+        """
+        case = self._cases[case_id]
+        utr = txn.get("utr")
+        # Dedup by UTR if present
+        if utr and any(t.get("utr") == utr for t in case.transactions):
+            _log_action(case_id, "TXN_DUP", f"UTR {utr} already recorded")
+            return False
+        case.transactions.append(txn)
+        # Keep legacy single fields pointing at the first transaction
+        if not case.transaction_id and utr:
+            case.transaction_id = utr
+        if not case.recipient and txn.get("recipient"):
+            case.recipient = txn["recipient"]
+        if not case.bank_name and txn.get("bank"):
+            case.bank_name = txn["bank"]
+        # Recompute total amount
+        total = 0
+        for t in case.transactions:
+            total += _parse_amount(t.get("amount"))
+        if total:
+            # Format without trailing .0 for whole rupees
+            case.amount_lost = f"₹{total:,.0f}" if total == int(total) else f"₹{total:,}"
+        _log_action(case_id, "TXN_ADDED", f"UTR {utr} amount {txn.get('amount')}")
+        return True
+
     def get_timeline(self, case_id: str) -> str:
         case = self._cases[case_id]
         lines = [f"*Case Status: {case.state.value}*"]
         lines.append(f"Started: {case.timestamp_started[:19]}")
         lines.append(f"Bank: {case.bank_name or '—'}")
-        lines.append(f"Amount: {case.amount_lost or '—'}")
-        lines.append(f"TXN ID: {case.transaction_id or '—'}")
+        # Total lost — compute from transactions if not already set
+        if case.amount_lost:
+            lines.append(f"Total Lost: {case.amount_lost}")
+        elif case.transactions:
+            total = sum(_parse_amount(t.get("amount")) for t in case.transactions)
+            if total:
+                total_str = f"₹{total:,.0f}" if total == int(total) else f"₹{total:,}"
+                lines.append(f"Total Lost: {total_str}")
+
+        # List ALL transactions (cybercrime needs every one)
+        if case.transactions:
+            lines.append("")
+            lines.append(f"*Transactions ({len(case.transactions)}):*")
+            for i, t in enumerate(case.transactions, 1):
+                lines.append(
+                    f"  {i}. {t.get('amount') or '—'} — {t.get('recipient') or '—'} "
+                    f"(UTR: {t.get('utr') or '—'}) {t.get('timestamp') or ''}".rstrip()
+                )
+        elif case.transaction_id:
+            lines.append(f"TXN ID: {case.transaction_id}")
         lines.append("")
 
         if case.actions_completed:
@@ -186,3 +239,14 @@ def _days_since(iso_timestamp: str) -> float:
     then = datetime.fromisoformat(iso_timestamp)
     now = datetime.now(timezone.utc)
     return round((now - then).total_seconds() / 86400, 1)
+
+
+def _parse_amount(amount: str | None) -> float:
+    """Parse an amount string like '₹5,000' or '5000.00' to a float."""
+    if not amount:
+        return 0.0
+    cleaned = amount.replace("₹", "").replace(",", "").replace("Rs", "").strip()
+    try:
+        return float(cleaned)
+    except ValueError:
+        return 0.0
