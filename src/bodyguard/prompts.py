@@ -26,6 +26,7 @@ information from their message. If something is missing, ask for it specifically
 
 Return a JSON object:
 {{
+    "victim_name": "string or null",     # the victim's full name, if mentioned
     "bank_name": "string or null",
     "transaction_id": "string or null",
     "amount_lost": "string or null",

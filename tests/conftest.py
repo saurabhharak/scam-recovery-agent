@@ -62,6 +62,7 @@ class FakeEngine:
 
     def extract_triage_info(self, message_text: str) -> dict:
         return {
+            "victim_name": "Saurabh Harak",
             "bank_name": "HDFC",
             "transaction_id": "TXN123",
             "amount_lost": "₹50,000",

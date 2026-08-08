@@ -174,6 +174,12 @@ def _handle_triage_new_scam(client, message, case, engine, alerts, result):
         scam_type=info.get("scam_type"),
         scam_summary=info.get("summary"),
     )
+    # Capture the victim's identity if mentioned (for the complaint)
+    if info.get("victim_name"):
+        case.victim_info["name"] = info["victim_name"]
+        if info.get("bank_name"):
+            case.victim_info["bank"] = info["bank_name"]
+        case_manager.update_case(case.case_id, victim_info=case.victim_info)
     message.reply(TRIAGE_INTRO)
     message.typing()
 
@@ -181,6 +187,13 @@ def _handle_triage_new_scam(client, message, case, engine, alerts, result):
 def _handle_triage_info(client, message, case, engine, alerts, result):
     info = result.get("extracted_info", {})
     case_manager.update_case(case.case_id, **{k: v for k, v in info.items() if v})
+
+    # Capture victim name from a reply (e.g. "My name is Rahul Verma")
+    if info.get("victim_name"):
+        case.victim_info["name"] = info["victim_name"]
+        if info.get("bank_name") and not case.victim_info.get("bank"):
+            case.victim_info["bank"] = info["bank_name"]
+        case_manager.update_case(case.case_id, victim_info=case.victim_info)
 
     # Check if we have enough to advance
     if case.bank_name and case.transaction_id and case.amount_lost:
