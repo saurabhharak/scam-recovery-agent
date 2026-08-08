@@ -1,5 +1,5 @@
 [project]
-name = "scam-recovery-commander"
+name = "scam-recovery-agent"
 version = "0.1.0"
 description = "Scam Recovery Commander (Digital Bodyguard) — AI agent for scam recovery coordination via email + Telegram"
 readme = "README.md"

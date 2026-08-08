@@ -34,8 +34,8 @@ When a victim reports a scam, the agent:
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/scam-recovery-commander.git
-cd scam-recovery-commander
+git clone https://github.com/saurabhharak/scam-recovery-agent.git
+cd scam-recovery-agent
 uv sync --all-extras     # creates .venv, installs deps + dev extras
 ```
 
@@ -97,7 +97,7 @@ curl -s "https://api.trycaspianai.com/v1/events?type=message.sent" \
 ## Project Structure
 
 ```
-scam-recovery-commander/
+scam-recovery-agent/
 ├── src/
 │   └── bodyguard/
 │       ├── __init__.py          # Package

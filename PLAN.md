@@ -125,7 +125,7 @@ system_prompt = system_prompt + "\n\n" + client.behavior_prompt()
 
 ### 1. Project Scaffold
 ```
-scam-recovery-commander/
+scam-recovery-agent/
 ├── README.md              # Setup instructions + demo link
 ├── .env.example           # Template for CASPIAN_API_KEY etc.
 ├── pyproject.toml         # Project metadata + dependencies (modern Python, uv-compatible)
