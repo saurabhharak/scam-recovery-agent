@@ -310,13 +310,25 @@ def _complete_and_advance(case_id: str, action_name: str, result: str, next_stat
 
 
 def _handle_bank_alert_confirm(client, message, case, engine, alerts, result):
-    _complete_and_advance(
+    """User confirmed the reviewed bank draft → mark it forwarded + store ref.
+
+    Only an explicit CONFIRM_ACTION marks the bank complaint as forwarded.
+    Stores a reference (the complaint was sent to the bank's fraud desk).
+    """
+    reference = f"BNK-{case.case_id[:8].upper()}"
+    case_manager.complete_action(
         case.case_id,
         "Forward bank complaint to fraud desk",
-        "Forwarded by victim",
-        CaseState.RECOVERY_TRACKING,
+        f"Forwarded, ref {reference}",
     )
-    message.reply("✅ Bank complaint marked as forwarded. I'll track their response.")
+    case_manager.update_case(case.case_id, bank_fir_number=reference)
+    case_manager.advance_state(case.case_id, CaseState.RECOVERY_TRACKING)
+    message.reply(
+        f"✅ Your bank fraud complaint is marked as **forwarded** to the bank's fraud desk.\n\n"
+        f"Reference: **{reference}**\n\n"
+        f"Per RBI guidelines, the bank must respond to fraud complaints promptly. "
+        f"I'll track their reply and escalate if they don't respond in 48 hours."
+    )
 
 
 def _handle_cyber_complaint_confirm(client, message, case, engine, alerts, result):
@@ -393,11 +405,14 @@ def _kick_off_recovery(client, case, engine, alerts):
     )
     alerts.send_proactive_message(
         case.case_id,
-        f"📋 *Bank Fraud Complaint — Ready to Send*\n\n"
-        f"Forward this to your bank's fraud desk"
-        f"{f' (e.g., fraud@{case.bank_name.lower()}.com)' if case.bank_name else ''}:"
+        f"📋 *Bank Fraud Complaint — Draft Ready for Your Review*\n\n"
+        f"Here's your complaint for your bank's fraud desk"
+        f"{f' (e.g., fraud@{case.bank_name.lower()}.com)' if case.bank_name else ''}. "
+        f"Please **review it carefully**:"
         f"\n\n---\n\n{bank_draft}\n\n---\n\n"
-        f"Reply YES to confirm you've forwarded it, and I'll mark it complete."
+        f"• Reply **CONFIRM** if it's correct and you've sent it to your bank\n"
+        f"• Reply with any **corrections** and I'll regenerate it\n\n"
+        f"I will NOT mark it as forwarded until you confirm."
     )
     case_manager.add_action(case.case_id, "Forward bank complaint to fraud desk", date)
 
@@ -447,9 +462,10 @@ def _kick_off_recovery(client, case, engine, alerts):
     alerts.send_proactive_message(case.case_id, password_guide)
     case_manager.add_action(case.case_id, "Enable 2FA and change passwords", date)
 
-    # 5. Advance to an intermediate state — RECOVERY_TRACKING only via
-    #    confirm handlers (the state machine forbids a direct jump).
-    case_manager.advance_state(case.case_id, CaseState.CREDIT_FREEZE)
+    # 5. Land in BANK_ALERT — the first recovery action. The user confirms
+    #    the bank complaint (review → confirm → forwarded) which advances the
+    #    state machine onward. RECOVERY_TRACKING comes after the confirm.
+    case_manager.advance_state(case.case_id, CaseState.BANK_ALERT)
 
     # 6. Schedule follow-ups (simulated — seconds instead of hours for demo)
     alerts.run_recovery_loop(case.case_id)
