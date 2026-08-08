@@ -12,6 +12,7 @@ from caspian_sdk import CommClient
 from bodyguard.case_manager import CaseState, case_manager
 from bodyguard.recovery_engine import RecoveryEngine
 from bodyguard.alert_system import AlertSystem
+from bodyguard.email_link import build_gmail_compose_url
 
 TRIAGE_INTRO = """🛡️ *Digital Bodyguard activated.*
 
@@ -391,6 +392,34 @@ def _handle_unknown(client, message, case, engine, alerts, result):
 
 # ── Internal helpers ──────────────────────────────────────────────────────
 
+# Standard fraud-desk / grievance addresses used for the pre-filled email links.
+BANK_FRAUD_EMAILS = {
+    "hdfc": "fraud@hdfcbank.com",
+    "sbi": "customer.care@sbi.co.in",
+    "icici": "custcare@icicibank.com",
+    "axis": "fraudalert@axisbank.com",
+    "kotak": "customerservice@kotak.com",
+}
+CYBER_GRIEVANCE_EMAIL = "complaints-mha@gov.in"  # placeholder — user can change
+
+
+def _gmail_link_for(case, kind: str, draft: str) -> str:
+    """Build the one-tap Gmail compose link for a bank or cyber complaint."""
+    if kind == "bank":
+        bank_key = (case.bank_name or "").lower()
+        recipient = BANK_FRAUD_EMAILS.get(bank_key, "frauddesk@yourbank.com")
+        subject = f"Fraud Complaint — Unauthorised debit of {case.amount_lost or 'funds'} (UTR: {case.transaction_id or 'TXN'})"
+    else:
+        recipient = CYBER_GRIEVANCE_EMAIL
+        subject = f"Cyber Crime Complaint — {case.scam_type or 'fraud'} — {case.amount_lost or 'loss'}"
+
+    return build_gmail_compose_url(
+        to=recipient,
+        subject=subject,
+        body=draft,
+    )
+
+
 def _kick_off_recovery(client, case, engine, alerts):
     """Execute parallel recovery actions — drafts sent, not LLM tools."""
     date = _now_iso()
@@ -410,7 +439,10 @@ def _kick_off_recovery(client, case, engine, alerts):
         f"{f' (e.g., fraud@{case.bank_name.lower()}.com)' if case.bank_name else ''}. "
         f"Please **review it carefully**:"
         f"\n\n---\n\n{bank_draft}\n\n---\n\n"
-        f"• Reply **CONFIRM** if it's correct and you've sent it to your bank\n"
+        f"📧 **One-tap send:** tap this link to open it pre-filled in YOUR Gmail — "
+        f"just press Send (it goes from your own email):\n\n"
+        f"{_gmail_link_for(case, 'bank', bank_draft)}\n\n"
+        f"• Reply **CONFIRM** once you've sent it to your bank\n"
         f"• Reply with any **corrections** and I'll regenerate it\n\n"
         f"I will NOT mark it as forwarded until you confirm."
     )
@@ -446,7 +478,10 @@ def _kick_off_recovery(client, case, engine, alerts):
         f"👮 *Cyber Crime Complaint — Draft Ready for Your Review*\n\n"
         f"Here's your complaint for cybercrime.gov.in. Please **review it carefully**:"
         f"\n\n---\n\n{cyber_draft}\n\n---\n\n"
-        f"• Reply **CONFIRM** if it's correct and you've filed it at cybercrime.gov.in\n"
+        f"📧 **Send to your cyber cell / grievance email** — tap to open pre-filled "
+        f"in YOUR Gmail, then press Send:\n\n"
+        f"{_gmail_link_for(case, 'cyber', cyber_draft)}\n\n"
+        f"• Reply **CONFIRM** once you've filed it (and share the acknowledgement no. if you got one)\n"
         f"• Reply with any **corrections** (e.g. 'my name is wrong') and I'll regenerate it\n\n"
         f"I will NOT mark it as filed until you confirm."
     )
