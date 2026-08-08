@@ -278,6 +278,27 @@ def _handle_confirm_action(client, message, case, engine, alerts, result):
     message.reply("✅ Action confirmed. I'll proceed and update your case timeline.")
 
 
+def _handle_cyber_complaint_filed(client, message, case, engine, alerts, result):
+    """User confirmed the reviewed draft → mark the cyber complaint as FILED.
+
+    This is the review→confirm gate: the draft was sent for review, and only
+    an explicit CONFIRM marks it as submitted. Stores a reference number.
+    """
+    reference = f"CYB-{case.case_id[:8].upper()}"
+    case_manager.complete_action(
+        case.case_id,
+        "File cyber crime complaint at cybercrime.gov.in",
+        f"Filed, ref {reference}",
+    )
+    case_manager.update_case(case.case_id, cyber_complaint_number=reference)
+    message.reply(
+        f"✅ Your cyber crime complaint is marked as **filed** at cybercrime.gov.in.\n\n"
+        f"Reference: **{reference}**\n\n"
+        f"Save this number — you'll need it for follow-ups. I'll track the investigation "
+        f"and remind you to check the portal if there's no progress."
+    )
+
+
 def _complete_and_advance(case_id: str, action_name: str, result: str, next_state: CaseState) -> None:
     """Complete a pending action and advance the state machine.
 
@@ -373,7 +394,8 @@ def _kick_off_recovery(client, case, engine, alerts):
     alerts.send_proactive_message(
         case.case_id,
         f"📋 *Bank Fraud Complaint — Ready to Send*\n\n"
-        f"Forward this to your bank's fraud desk (e.g., fraud@{case.bank_name.lower()}.com):"
+        f"Forward this to your bank's fraud desk"
+        f"{f' (e.g., fraud@{case.bank_name.lower()}.com)' if case.bank_name else ''}:"
         f"\n\n---\n\n{bank_draft}\n\n---\n\n"
         f"Reply YES to confirm you've forwarded it, and I'll mark it complete."
     )
@@ -406,10 +428,12 @@ def _kick_off_recovery(client, case, engine, alerts):
     )
     alerts.send_proactive_message(
         case.case_id,
-        f"👮 *Cyber Crime Complaint — Ready to File*\n\n"
-        f"Paste this into cybercrime.gov.in. Here's your draft:"
+        f"👮 *Cyber Crime Complaint — Draft Ready for Your Review*\n\n"
+        f"Here's your complaint for cybercrime.gov.in. Please **review it carefully**:"
         f"\n\n---\n\n{cyber_draft}\n\n---\n\n"
-        f"Reply YES once filed, and I'll track it."
+        f"• Reply **CONFIRM** if it's correct and you've filed it at cybercrime.gov.in\n"
+        f"• Reply with any **corrections** (e.g. 'my name is wrong') and I'll regenerate it\n\n"
+        f"I will NOT mark it as filed until you confirm."
     )
     case_manager.add_action(case.case_id, "File cyber crime complaint at cybercrime.gov.in", date)
 
@@ -465,6 +489,6 @@ _STATE_ROUTER: dict = {
         "INFO_RESPONSE": _handle_recovery_info,
         "STATUS_CHECK": _handle_status_check,
         "ADD_CONTACT": _handle_add_contact,
-        "CONFIRM_ACTION": _handle_confirm_action,
+        "CONFIRM_ACTION": _handle_cyber_complaint_filed,
     },
 }
