@@ -201,3 +201,59 @@ The summary should:
 5. Remind them the Bodyguard stays on watch for 30 more days
 
 Tone: warm, conclusive, empowering."""
+
+
+UPI_TEXT_EXTRACTION_PROMPT = """You are extracting UPI transaction details from text shared by a scam victim.
+
+The text comes from the "share" feature of a UPI app (Google Pay, PhonePe, Paytm,
+BHIM) or a bank SMS. It may be formatted as structured text or free-form.
+
+Extract the following fields and return ONLY a JSON object, no prose:
+
+{{
+    "amount": "string or null",          # e.g. "₹50,000" or "5000.00"
+    "utr": "string or null",             # UTR / UPI transaction ID / bank ref number (12-digit number)
+    "recipient": "string or null",       # UPI handle or name paid to (e.g. "scammer@okhdfcbank")
+    "bank": "string or null",            # sender's bank
+    "timestamp": "string or null",       # date and time of transaction
+    "is_fraud_evidence": true            # always true — the victim is reporting this as fraud
+}}
+
+Shared text:
+{shared_text}"""
+
+
+VISION_EXTRACTION_PROMPT = """You are extracting UPI transaction details from a screenshot.
+
+Look at this payment screenshot carefully. It may be from PhonePe, Google Pay, Paytm,
+BHIM, or a bank SMS notification.
+
+Extract these fields and return ONLY a JSON object, no prose:
+
+{{
+    "amount": "string or null",          # e.g. "₹5,000" or "5000.00"
+    "utr": "string or null",             # UTR / UPI transaction ID / bank ref number (12-digit number)
+    "recipient": "string or null",       # UPI handle or name paid to (e.g. "scammer@okhdfcbank")
+    "bank": "string or null",            # sender's bank
+    "timestamp": "string or null"        # date and time of transaction
+}}
+
+If a field is not visible in the screenshot, use null. Do not guess or invent values.
+The victim is reporting this as fraud, so accuracy of the UTR and amount is critical."""
+
+
+SCREENSHOT_GUIDANCE = """I received your screenshot, but I can't reliably read images yet.
+
+Please help me by **copying the transaction details** from your UPI app and pasting them here. Here's how:
+
+1. Open the payment app (PhonePe / Google Pay / Paytm)
+2. Go to **History / Passbook** → tap on that transaction
+3. Tap the **share / copy details** option (or screenshot → "Share as text")
+4. Paste what it shows — I need:
+   - **Amount**
+   - **UTR / transaction ID** (12-digit number)
+   - **Recipient UPI ID** (e.g. scammer@okhdfcbank)
+   - **Date & time**
+   - **Your bank**
+
+Even just pasting the amount + UTR is enough to start your recovery."""

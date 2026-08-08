@@ -23,6 +23,7 @@ from bodyguard.prompts import (
     STATUS_UPDATE_PROMPT,
     SYSTEM_PROMPT,
     TRIAGE_PROMPT,
+    VISION_EXTRACTION_PROMPT,
 )
 
 
@@ -115,6 +116,7 @@ class RecoveryEngine:
     def __init__(self, llm_client: OpenAI):
         self.llm = llm_client
         self.model = get_config().llm_model
+        self.vision_model = get_config().vision_model
 
     def _generate(self, system: str, user: str, timeout: float = 15.0) -> str:
         """Generate text with timeout and fallback."""
@@ -165,6 +167,48 @@ class RecoveryEngine:
             "urgency": "high",
             "summary": "Unknown incident",
         }
+
+    def extract_from_screenshot(self, media_url: str) -> dict[str, Any]:
+        """Extract UPI transaction details from a screenshot via a vision model.
+
+        The image is referenced by URL (not base64) — Featherless vision models
+        work reliably with URLs and time out on large base64 payloads.
+        """
+        try:
+            response = self.llm.chat.completions.create(
+                model=self.vision_model,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": VISION_EXTRACTION_PROMPT},
+                        {"type": "image_url", "image_url": {"url": media_url}},
+                    ],
+                }],
+                max_tokens=300,
+                timeout=60,
+            )
+            content = response.choices[0].message.content or ""
+            parsed = parse_json_response(content)
+            if parsed:
+                return parsed
+        except Exception as e:
+            print(f"[RECOVERY_ENGINE] Vision extraction failed for {media_url[:60]}: {e}")
+        return {}
+
+    def extract_from_screenshots(self, media_urls: list[str]) -> dict[str, Any]:
+        """Extract from MULTIPLE screenshots and merge partial results.
+
+        A panicked user may send the PhonePe receipt, the bank SMS, and the UPI
+        history — each showing part of the transaction. We run vision on each
+        and merge the fields (first non-null wins).
+        """
+        merged: dict[str, Any] = {}
+        for url in media_urls:
+            result = self.extract_from_screenshot(url)
+            for key, value in result.items():
+                if value is not None and not merged.get(key):
+                    merged[key] = value
+        return merged
 
     def draft_bank_complaint(
         self, *, bank_name: str, transaction_id: str, amount_lost: str,

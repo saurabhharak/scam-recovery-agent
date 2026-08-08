@@ -21,6 +21,7 @@ class FakeMessage:
         self.conversation_id = conversation_id
         self.replies: list[str] = []
         self.typing_calls = 0
+        self.media: list[dict] = []
 
     def reply(self, content: str) -> None:
         self.replies.append(content)
@@ -52,6 +53,9 @@ class FakeEngine:
             "confidence": confidence,
             "extracted_info": extracted or {},
         }
+        self.vision_extract_result: dict = {}
+        self.vision_extract_called = False
+        self.last_media_url: str | None = None
 
     def classify_intent(self, message_text: str, case_state: str, case_summary: str) -> dict:
         return self.intent_result
@@ -65,6 +69,26 @@ class FakeEngine:
             "urgency": "high",
             "summary": "OTP scam",
         }
+
+    def extract_from_screenshot(self, media_url: str) -> dict:
+        """Vision extraction — returns canned result in tests."""
+        self.vision_extract_called = True
+        self.last_media_url = media_url
+        if isinstance(self.vision_extract_result, list):
+            return self.vision_extract_result[0] if self.vision_extract_result else {}
+        return self.vision_extract_result
+
+    def extract_from_screenshots(self, media_urls: list[str]) -> dict:
+        """Merge per-image vision results (mimics the real engine)."""
+        self.vision_extract_called = True
+        if isinstance(self.vision_extract_result, list):
+            merged: dict = {}
+            for result in self.vision_extract_result:
+                for key, value in result.items():
+                    if value is not None and not merged.get(key):
+                        merged[key] = value
+            return merged
+        return self.vision_extract_result
 
     def draft_bank_complaint(self, **kwargs) -> str:
         return "Dear HDFC Fraud Department, ..."

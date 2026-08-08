@@ -28,6 +28,7 @@ class Config:
     openai_api_key: str
     openai_base_url: str
     llm_model: str
+    vision_model: str
     bodyguard_username: str
 
 
@@ -44,6 +45,7 @@ def get_config() -> Config:
             openai_api_key=_require("OPENAI_API_KEY"),
             openai_base_url=_optional("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             llm_model=_optional("LLM_MODEL", "gpt-4o-mini"),
+            vision_model=_optional("VISION_MODEL", "Qwen/Qwen3-VL-8B-Instruct"),
             bodyguard_username=_optional("BODYGUARD_USERNAME", "bodyguard"),
         )
     return _config

@@ -43,6 +43,14 @@ def handle(client: CommClient, message, engine: RecoveryEngine, alerts: AlertSys
     conversation_id = message.conversation_id
     sender = (message.sender or {}).get("address", "anonymous")
     text = (message.text or "").strip()
+    media = getattr(message, "media", []) or []
+
+    # A screenshot of a UPI transaction takes priority over the text intent —
+    # PhonePe shares marketing text + a screenshot, and the real data is in
+    # the image. A panicked user may send multiple screenshots.
+    if media:
+        _handle_media(client, message, engine, alerts, conversation_id, sender)
+        return
 
     if not text:
         message.reply("I didn't catch that — what can I help with?")
@@ -71,6 +79,77 @@ def handle(client: CommClient, message, engine: RecoveryEngine, alerts: AlertSys
     _STATE_ROUTER.get(case.state, {}).get(
         intent, _handle_unknown
     )(client, message, case, engine, alerts, intent_result)
+
+
+def _normalize_media_url(url: str) -> str:
+    """Fix the malformed media URLs emitted by the Caspian gateway.
+
+    Observed: 'https://api.telegram.orgfile/bot.../photos/file_0.jpg'
+    (missing slash) — the vision model can't fetch that. Correct it to
+    'https://api.telegram.org/file/bot.../photos/file_0.jpg'.
+    """
+    if url and "api.telegram.orgfile" in url:
+        return url.replace("api.telegram.orgfile", "api.telegram.org/file")
+    return url
+
+
+def _handle_media(client, message, engine, alerts, conversation_id, sender):
+    """Process screenshot(s) — extract UPI transaction details via vision.
+
+    Multiple screenshots are merged (each may show partial data). If the UTR
+    is still missing after merging, ask the user for it (fail fast).
+    """
+    media_urls = [_normalize_media_url(m.get("url")) for m in message.media if m.get("url")]
+    if not media_urls:
+        message.reply("I received an attachment but couldn't read it. Could you describe what happened?")
+        return
+
+    case = case_manager.get_or_create(conversation_id, sender)
+    message.typing()
+
+    if len(media_urls) == 1:
+        info = engine.extract_from_screenshot(media_urls[0])
+    else:
+        info = engine.extract_from_screenshots(media_urls)
+
+    utr = info.get("utr")
+    amount = info.get("amount")
+    recipient = info.get("recipient")
+    bank = info.get("bank")
+
+    case_manager.update_case(
+        case.case_id,
+        transaction_id=utr,
+        amount_lost=amount,
+        recipient=recipient,
+        bank_name=bank,
+    )
+
+    if not utr:
+        message.reply(
+            "I got your screenshot(s) but couldn't read the UTR number clearly. "
+            "Could you paste it here? It's a 12-digit number on the transaction "
+            "receipt (also called Transaction ID or Bank Ref No)."
+        )
+        return
+
+    # Confirmed the transaction back to the user
+    parts = []
+    if amount:
+        parts.append(f"Amount: **{amount}**")
+    if recipient:
+        parts.append(f"Paid to: **{recipient}**")
+    parts.append(f"UTR: **{utr}**")
+    if bank:
+        parts.append(f"Bank: **{bank}**")
+    reply = "✅ I've got the transaction details from your screenshot.\n\n" + "\n".join(parts)
+    reply += (
+        "\n\nThis is critical evidence for your recovery. I'll use it in the "
+        "bank complaint and cyber crime report."
+    )
+    if case.amount_lost and case.transaction_id:
+        reply += "\n\nType **status** to see your case, or tell me more about the scam."
+    message.reply(reply)
 
 
 # ── State handlers ────────────────────────────────────────────────────────

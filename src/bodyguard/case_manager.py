@@ -69,6 +69,7 @@ class Case:
     cyber_complaint_number: str | None = None
     bank_fir_number: str | None = None
     follow_up_due: str | None = None
+    recipient: str | None = None
     message_count: int = 0
 
 
