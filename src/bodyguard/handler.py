@@ -332,13 +332,30 @@ def _kick_off_recovery(client, case, engine, alerts):
     )
     case_manager.add_action(case.case_id, "Forward bank complaint to fraud desk", date)
 
-    # 2. Draft cyber complaint
+    # 2. Draft cyber complaint (with ALL transactions + victim/fraudster info)
+    txn_lines = []
+    for i, t in enumerate(case.transactions, 1):
+        txn_lines.append(
+            f"{i}. Amount: {t.get('amount') or 'unknown'} | UTR: {t.get('utr') or 'unknown'} "
+            f"| Paid to: {t.get('recipient') or 'unknown'} | Bank: {t.get('bank') or 'unknown'} "
+            f"| Time: {t.get('timestamp') or 'unknown'}"
+        )
+    transactions_str = "\n".join(txn_lines) if txn_lines else "Not yet provided"
+    victim_str = (
+        f"Name: {case.victim_info.get('name', 'TBD')} | "
+        f"Contact: {case.victim_contact} | "
+        f"Bank: {case.bank_name or 'TBD'}"
+    )
+    fraudster_str = (
+        f"UPI handle: {case.fraudster_info.get('upi_handle', 'Not known')} | "
+        f"Name: {case.fraudster_info.get('name', 'Not known')}"
+    )
     cyber_draft = engine.draft_cyber_complaint(
-        bank_name=case.bank_name or "your bank",
-        transaction_id=case.transaction_id or "unknown",
-        amount_lost=case.amount_lost or "unknown",
+        victim_info=victim_str,
+        fraudster_info=fraudster_str,
+        transactions=transactions_str,
         scam_type=case.scam_type or "other",
-        date=date,
+        scam_summary=case.scam_summary or "Financial fraud reported by victim",
     )
     alerts.send_proactive_message(
         case.case_id,

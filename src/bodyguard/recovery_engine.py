@@ -224,15 +224,15 @@ class RecoveryEngine:
         return self._generate(SYSTEM_PROMPT, prompt)
 
     def draft_cyber_complaint(
-        self, *, bank_name: str, transaction_id: str, amount_lost: str,
-        scam_type: str, date: str
+        self, *, victim_info: str, fraudster_info: str, transactions: str,
+        scam_type: str, scam_summary: str
     ) -> str:
         prompt = CYBER_COMPLAINT_PROMPT.format(
-            bank_name=bank_name,
-            transaction_id=transaction_id,
-            amount_lost=amount_lost,
+            victim_info=victim_info,
+            fraudster_info=fraudster_info,
+            transactions=transactions,
             scam_type=scam_type,
-            date=date,
+            scam_summary=scam_summary,
         )
         return self._generate(SYSTEM_PROMPT, prompt)
 

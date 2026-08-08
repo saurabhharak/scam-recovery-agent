@@ -91,18 +91,26 @@ account number and contact details."""
 CYBER_COMPLAINT_PROMPT = """Draft a cyber crime complaint for filing at cybercrime.gov.in
 or the nearest cyber cell. Use these case details:
 
-- Bank: {bank_name}
-- Transaction ID: {transaction_id}
-- Amount lost: {amount_lost}
-- Scam type: {scam_type}
-- Date of incident: {date}
+=== VICTIM DETAILS ===
+{victim_info}
+
+=== FRAUDSTER DETAILS (if known) ===
+{fraudster_info}
+
+=== ALL TRANSACTIONS ===
+{transactions}
+
+Scam type: {scam_type}
+Summary: {scam_summary}
 
 The complaint should include:
-1. Incident description in clear, factual language
-2. All transaction details (date, time, amount, UTR/transaction ID)
-3. Suspected perpetrator details (if known — phone number, name used, platform)
-4. Request for investigation and fund recovery
-5. Statement that evidence (screenshots, call records) is available on request
+1. The victim's full details (name, contact) as the complainant
+2. EVERY transaction in a numbered list (date, time, amount, UTR/transaction ID, recipient UPI/account)
+3. The total amount lost across all transactions
+4. All known fraudster identifiers (UPI handle, phone number, name used, bank account if visible)
+5. A clear incident description in factual language
+6. Request for investigation and fund recovery
+7. Statement that evidence (screenshots, call records) is available on request
 
 Format as a narrative that can be pasted directly into the cyber crime portal.
 Use Indian legal terminology where appropriate."""
