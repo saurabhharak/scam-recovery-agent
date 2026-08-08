@@ -1,6 +1,10 @@
 # Caspian
 .env
 
+# SQLite database (runtime data, not source)
+*.db
+*.sqlite3
+
 # Python
 __pycache__/
 *.py[cod]
