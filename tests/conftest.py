@@ -35,12 +35,16 @@ class FakeAlerts:
 
     def __init__(self):
         self.sent: list[tuple[str, str]] = []
+        self.reminders: list[tuple[str, str, int]] = []
 
     def send_proactive_message(self, conversation_id: str, text: str) -> None:
         self.sent.append((conversation_id, text))
 
     def run_recovery_loop(self, case_id: str) -> None:
         pass
+
+    def schedule_repeat_reminder(self, case_id: str, message: str, interval_seconds: int = 300) -> None:
+        self.reminders.append((case_id, message, interval_seconds))
 
 
 class FakeEngine:
@@ -56,19 +60,24 @@ class FakeEngine:
         self.vision_extract_result: dict = {}
         self.vision_extract_called = False
         self.last_media_url: str | None = None
+        self.triage_info_override: dict | None = None
 
     def classify_intent(self, message_text: str, case_state: str, case_summary: str) -> dict:
         return self.intent_result
 
     def extract_triage_info(self, message_text: str) -> dict:
+        # Tests can override via triage_info_override; default has no bank/name
+        # so the blocking gate + isolation tests are honest.
+        if self.triage_info_override is not None:
+            return self.triage_info_override
         return {
-            "victim_name": "Saurabh Harak",
-            "bank_name": "HDFC",
-            "transaction_id": "TXN123",
-            "amount_lost": "₹50,000",
+            "victim_name": None,
+            "bank_name": None,
+            "transaction_id": None,
+            "amount_lost": None,
             "scam_type": "upi_fraud",
             "urgency": "high",
-            "summary": "OTP scam",
+            "summary": "Scam reported",
         }
 
     def extract_from_screenshot(self, media_url: str) -> dict:

@@ -86,6 +86,27 @@ class CaseManager:
 
     def __init__(self):
         self._cases: dict[str, Case] = {}
+        self._store = None  # optional Persistence backend
+
+    def attach_store(self, store) -> None:
+        """Attach a SQLite store — every mutation is persisted automatically."""
+        self._store = store
+
+    def load_all_from(self, store) -> None:
+        """Load all persisted cases into the in-memory cache (on startup)."""
+        for case in store.load_all():
+            self._cases[case.case_id] = case
+        self._store = store
+        _log_action("system", "STORE_LOAD", f"{len(self._cases)} cases loaded")
+
+    def _persist(self, case_id: str) -> None:
+        if self._store is not None:
+            case = self._cases.get(case_id)
+            if case:
+                try:
+                    self._store.save(case)
+                except Exception as e:
+                    print(f"[CASE_MANAGER] Persist failed for {case_id}: {e}")
 
     def get(self, case_id: str) -> Case | None:
         return self._cases.get(case_id)
@@ -96,6 +117,7 @@ class CaseManager:
                 case_id=case_id,
                 victim_contact=victim_contact,
             )
+            self._persist(case_id)
         return self._cases[case_id]
 
     def advance_state(self, case_id: str, new_state: CaseState) -> Case:
@@ -106,6 +128,7 @@ class CaseManager:
             )
         old_state = case.state.value
         case.state = new_state
+        self._persist(case_id)
         _log_action(case_id, "STATE_CHANGE", f"{old_state} → {new_state.value}")
         return case
 
@@ -115,6 +138,7 @@ class CaseManager:
             if hasattr(case, key):
                 setattr(case, key, value)
         case.message_count += 1
+        self._persist(case_id)
         _log_action(case_id, "CASE_UPDATE", str(fields))
         return case
 
@@ -124,6 +148,7 @@ class CaseManager:
         case.pending_actions.append(
             CaseAction(action=action, timestamp=ts, deadline=deadline)
         )
+        self._persist(case_id)
 
     def complete_action(self, case_id: str, action_name: str, result: str = "") -> None:
         case = self._cases[case_id]
@@ -132,6 +157,7 @@ class CaseManager:
                 case.pending_actions.remove(pending)
                 pending.result = result
                 case.actions_completed.append(pending)
+                self._persist(case_id)
                 _log_action(case_id, "ACTION_COMPLETED", f"{action_name}: {result}")
                 return
 
@@ -163,6 +189,7 @@ class CaseManager:
         if total:
             # Format without trailing .0 for whole rupees
             case.amount_lost = f"₹{total:,.0f}" if total == int(total) else f"₹{total:,}"
+        self._persist(case_id)
         _log_action(case_id, "TXN_ADDED", f"UTR {utr} amount {txn.get('amount')}")
         return True
 

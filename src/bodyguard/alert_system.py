@@ -70,6 +70,31 @@ class AlertSystem:
             self.send_proactive_message(case_id, message)
             self._timers.pop(case_id, None)
 
+    def schedule_repeat_reminder(
+        self, case_id: str, message: str, interval_seconds: int = 300
+    ) -> None:
+        """Remind the user every N seconds until the case leaves TRIAGE.
+
+        Used for the blocking gate — if the victim hasn't provided bank/account
+        info, we nudge them every 5 minutes (300s) so the recovery isn't stuck.
+        Stops automatically once the case advances past TRIAGE.
+        """
+        def _remind():
+            case = case_manager.get(case_id)
+            # Stop if the case resolved/advanced, or the info gate is satisfied
+            if not case or case.state.value != "TRIAGE":
+                self._timers.pop(case_id, None)
+                return
+            self.send_proactive_message(case_id, message)
+            # Re-arm for the next interval
+            self.schedule_repeat_reminder(case_id, message, interval_seconds)
+
+        timer = threading.Timer(interval_seconds, _remind)
+        timer.daemon = True
+        timer.start()
+        self._timers[case_id] = timer
+        _log_send(case_id, "REMINDER", f"repeats every {interval_seconds}s until bank info provided")
+
     def run_recovery_loop(self, case_id: str) -> None:
         """Simulate the recovery tracking loop for the demo.
 

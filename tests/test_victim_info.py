@@ -15,7 +15,15 @@ def test_new_scam_report_captures_victim_name(clean_case_manager, message_factor
         conversation_id="conv_vi_10",
     )
     engine = engine_factory(intent="NEW_SCAM_REPORT", confidence=0.95)
-    # FakeEngine.extract_triage_info returns victim_name="Saurabh Harak"
+    engine.triage_info_override = {
+        "victim_name": "Saurabh Harak",
+        "bank_name": "HDFC",
+        "transaction_id": None,
+        "amount_lost": None,
+        "scam_type": "upi_fraud",
+        "urgency": "high",
+        "summary": "Scam",
+    }
 
     handle(None, msg, engine, alerts)
 

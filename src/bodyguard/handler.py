@@ -184,6 +184,24 @@ def _handle_triage_new_scam(client, message, case, engine, alerts, result):
     message.typing()
 
 
+BANK_INFO_GATE_MESSAGE = """⚠️ I can't proceed with the complaints until I have **your bank account details** — the cyber cell and bank fraud desk both need to know *which account* was debited.
+
+Please share **either**:
+1. **Type it**: "My bank is HDFC, account ending 1234" (or full account number — I'll mask it), **or**
+2. **Send a screenshot** of your bank statement / passbook / debit SMS showing the account
+
+Without this, I **cannot file the complaint or send the bank email** — the recovery can't start. I'll remind you every 5 minutes until you provide it.
+
+You can type **status** anytime to see where your case stands."""
+
+
+def _has_victim_bank_info(case) -> bool:
+    """Gate: recovery can't start until we know which bank/account was debited."""
+    bank = case.victim_info.get("bank") or case.bank_name
+    account = case.victim_info.get("account")
+    return bool(bank and account)
+
+
 def _handle_triage_info(client, message, case, engine, alerts, result):
     info = result.get("extracted_info", {})
     case_manager.update_case(case.case_id, **{k: v for k, v in info.items() if v})
@@ -194,6 +212,22 @@ def _handle_triage_info(client, message, case, engine, alerts, result):
         if info.get("bank_name") and not case.victim_info.get("bank"):
             case.victim_info["bank"] = info["bank_name"]
         case_manager.update_case(case.case_id, victim_info=case.victim_info)
+
+    # BLOCKING GATE: if victim bank/account missing, do NOT proceed — ask + remind
+    if not _has_victim_bank_info(case):
+        # If the reply itself contained bank info, capture it
+        if info.get("bank_name") and not case.victim_info.get("bank"):
+            case.victim_info["bank"] = info["bank_name"]
+            case_manager.update_case(case.case_id, victim_info=case.victim_info)
+        # Ask for the account info we still need
+        if not case.victim_info.get("account"):
+            message.reply(BANK_INFO_GATE_MESSAGE)
+            alerts.schedule_repeat_reminder(
+                case.case_id,
+                message=BANK_INFO_GATE_MESSAGE,
+                interval_seconds=300,  # every 5 minutes
+            )
+            return
 
     # Check if we have enough to advance
     if case.bank_name and case.transaction_id and case.amount_lost:

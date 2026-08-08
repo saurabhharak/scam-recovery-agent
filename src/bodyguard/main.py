@@ -16,6 +16,7 @@ from caspian_sdk import CommClient
 from bodyguard.config import get_config
 from bodyguard.handler import handle
 from bodyguard.recovery_engine import RecoveryEngine
+from bodyguard.case_manager import case_manager
 from bodyguard.alert_system import AlertSystem
 
 
@@ -45,6 +46,13 @@ def run() -> None:
     )
     engine = RecoveryEngine(llm)
     alerts = AlertSystem(client)
+
+    # ── Persistence: reload any in-progress cases from SQLite ──
+    from bodyguard.store import Persistence
+    store = Persistence()
+    case_manager.load_all_from(store)
+    print(f"   Persistence: {store.db_path}")
+    print()
 
     # ── One handler, both channels ──
     @client.on_message

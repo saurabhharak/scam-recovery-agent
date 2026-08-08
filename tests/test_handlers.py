@@ -24,8 +24,7 @@ def test_triage_new_scam_extracts_and_replies(clean_case_manager, message_factor
 
     case = clean_case_manager.get(msg.conversation_id)
     assert case.state == CaseState.TRIAGE
-    assert case.bank_name == "HDFC"
-    assert case.amount_lost == "₹50,000"
+    assert case.scam_type == "upi_fraud"
     assert msg.replies  # intro replied
     assert msg.typing_calls == 1
 
@@ -36,6 +35,10 @@ def test_triage_info_complete_kicks_off_recovery(clean_case_manager, message_fac
         "INFO_RESPONSE",
         extracted={"bank_name": "HDFC", "transaction_id": "TXN123", "amount_lost": "₹50,000"},
     )
+    # Satisfy the victim-bank gate so recovery can proceed
+    case = clean_case_manager.get_or_create(msg.conversation_id, "victim@example.com")
+    case.victim_info = {"bank": "HDFC", "account": "XXXX1234"}
+    clean_case_manager.update_case(msg.conversation_id, victim_info=case.victim_info)
 
     handle(None, msg, engine, alerts)
 
@@ -55,8 +58,15 @@ def test_triage_info_complete_kicks_off_recovery(clean_case_manager, message_fac
 
 
 def test_triage_info_missing_fields_asks(clean_case_manager, message_factory, alerts):
-    msg = message_factory("HDFC bank")
-    engine = _make_engine("INFO_RESPONSE", extracted={"bank_name": "HDFC"})
+    msg = message_factory("HDFC bank, account ending 1234")
+    engine = _make_engine(
+        "INFO_RESPONSE",
+        extracted={"bank_name": "HDFC", "victim_name": None},
+    )
+    # Satisfy the victim-bank gate (bank + account provided in the message)
+    case = clean_case_manager.get_or_create(msg.conversation_id, "victim@example.com")
+    case.victim_info = {"bank": "HDFC", "account": "XXXX1234"}
+    clean_case_manager.update_case(msg.conversation_id, victim_info=case.victim_info)
 
     handle(None, msg, engine, alerts)
 
