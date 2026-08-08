@@ -25,32 +25,44 @@ TRIAGE_PROMPT = """A scam victim has just reported an incident. Extract the foll
 information from their message. If something is missing, ask for it specifically.
 
 Return a JSON object:
-{
+{{
     "bank_name": "string or null",
     "transaction_id": "string or null",
     "amount_lost": "string or null",
     "scam_type": "one of: upi_fraud, phishing, identity_theft, fake_landlord, investment_scam, other",
     "urgency": "one of: critical, high, medium",
     "summary": "one-line summary of what happened"
-}
+}}
 
 Victim's message: {message_text}"""
 
 
-CLASSIFY_INTENT_PROMPT = """Classify this message from a scam recovery case. The case context
-is provided for reference.
+CLASSIFY_INTENT_PROMPT = """You are an intent classifier for a scam recovery agent.
+
+Classify the incoming message into EXACTLY ONE intent. This is a routing decision,
+not an information extraction task.
 
 Case state: {case_state}
 Case summary: {case_summary}
 
 Message: {message_text}
 
-Return a JSON object:
-{
+IMPORTANT: Respond with ONLY a JSON object, nothing else. No markdown, no prose.
+
+The JSON must have exactly these keys:
+{{
     "intent": "one of: NEW_SCAM_REPORT, INFO_RESPONSE, STATUS_CHECK, ADD_CONTACT, CONFIRM_ACTION, UNKNOWN",
     "confidence": 0.0-1.0,
-    "extracted_info": {}
-}
+    "extracted_info": {{}}
+}}
+
+Intent definitions:
+- NEW_SCAM_REPORT: victim reports a NEW scam/fraud incident ("I got scammed", "₹50k gone", "fraud transaction")
+- INFO_RESPONSE: victim provides details requested during triage (bank name, transaction ID, amount)
+- STATUS_CHECK: victim asks about case progress ("any updates?", "what's happening?")
+- ADD_CONTACT: victim wants to add an emergency contact ("alert my brother", "+91...")
+- CONFIRM_ACTION: victim confirms completing an action ("yes, sent it", "done", "filed")
+- UNKNOWN: anything else
 
 If confidence is below 0.7, the system will ask the victim to clarify."""
 

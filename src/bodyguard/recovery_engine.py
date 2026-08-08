@@ -26,6 +26,89 @@ from bodyguard.prompts import (
 )
 
 
+def parse_json_response(text: str) -> dict[str, Any]:
+    """Extract the first JSON object from an LLM response, tolerating noise.
+
+    Models often return:
+    - bare JSON: {"intent": "X"}
+    - fenced: ```json\n{"intent": "X"}\n```
+    - truncated leading brace: intent": "X"}  (seen with DeepSeek on Featherless)
+    - prose wrapped around the JSON
+
+    Returns {} when nothing parseable is found (caller decides fallback).
+    """
+    if not text or not text.strip():
+        return {}
+
+    stripped = text.strip()
+
+    # 1. Direct parse first (cleanest case)
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    # 2. Strip markdown fences
+    if stripped.startswith("```"):
+        fenced = stripped.strip("`").strip()
+        if fenced.startswith("json"):
+            fenced = fenced[4:].strip()
+        try:
+            return json.loads(fenced)
+        except json.JSONDecodeError:
+            pass
+
+    # 3. Handle truncated leading brace BEFORE scanning for inner braces.
+    #    LLMs sometimes drop the opening brace:  intent": "X"}  →  {"intent": "X"}
+    #    (and sometimes the key's opening quote too: "intent"... starts with a quote)
+    if not stripped.startswith("{"):
+        # Try with just the brace
+        try:
+            return json.loads("{" + stripped)
+        except json.JSONDecodeError:
+            pass
+        # Then with brace + quote (key lost its opening quote too)
+        try:
+            return json.loads('{"' + stripped)
+        except json.JSONDecodeError:
+            pass
+
+    # 4. Find the LARGEST balanced { ... } block and parse that.
+    #    The outermost object is the real JSON — inner {} (e.g. "extracted_info": {})
+    #    are sub-objects we must not return prematurely.
+    start = stripped.find("{")
+    if start != -1:
+        best: dict | None = None
+        i = start
+        while i < len(stripped):
+            depth = 0
+            for j in range(i, len(stripped)):
+                if stripped[j] == "{":
+                    depth += 1
+                elif stripped[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = stripped[i:j + 1]
+                        try:
+                            parsed = json.loads(candidate)
+                        except json.JSONDecodeError:
+                            parsed = None
+                        # Keep the largest parseable block (the outermost object)
+                        if parsed is not None and (
+                            best is None or len(candidate) > len(json.dumps(best))
+                        ):
+                            best = parsed
+                        break
+            # Move past this object to find any later, larger top-level object
+            i = stripped.find("{", i + 1)
+            if i == -1:
+                break
+        if best is not None:
+            return best
+
+    return {}
+
+
 class RecoveryEngine:
     """Generates drafts via LLM. Injected with an LLM client — no hardcoded provider."""
 
@@ -61,25 +144,27 @@ class RecoveryEngine:
             message_text=message_text,
         )
         result = self._generate(SYSTEM_PROMPT, prompt, timeout=10.0)
-        try:
-            return json.loads(result)
-        except json.JSONDecodeError:
-            return {"intent": "UNKNOWN", "confidence": 0.0, "extracted_info": {}}
+        parsed = parse_json_response(result)
+        # Validate the response actually has an intent key — the model sometimes
+        # drifts into extraction output instead of classification.
+        if parsed and "intent" in parsed:
+            return parsed
+        return {"intent": "UNKNOWN", "confidence": 0.0, "extracted_info": {}}
 
     def extract_triage_info(self, message_text: str) -> dict[str, Any]:
         prompt = TRIAGE_PROMPT.format(message_text=message_text)
         result = self._generate(SYSTEM_PROMPT, prompt, timeout=10.0)
-        try:
-            return json.loads(result)
-        except json.JSONDecodeError:
-            return {
-                "bank_name": None,
-                "transaction_id": None,
-                "amount_lost": None,
-                "scam_type": "other",
-                "urgency": "high",
-                "summary": "Unknown incident",
-            }
+        parsed = parse_json_response(result)
+        if parsed:
+            return parsed
+        return {
+            "bank_name": None,
+            "transaction_id": None,
+            "amount_lost": None,
+            "scam_type": "other",
+            "urgency": "high",
+            "summary": "Unknown incident",
+        }
 
     def draft_bank_complaint(
         self, *, bank_name: str, transaction_id: str, amount_lost: str,
